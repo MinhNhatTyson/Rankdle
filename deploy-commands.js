@@ -37,6 +37,22 @@ const commands = [
       opt.setName("member").setDescription("Whose rank to check (defaults to you)").setRequired(false)
     )
     .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("stats")
+    .setDescription("Show a member's most-used agent, headshot rate, and win rate over recent matches")
+    .addUserOption((opt) =>
+      opt.setName("member").setDescription("Whose stats to check (defaults to you)").setRequired(false)
+    )
+    .addIntegerOption((opt) =>
+      opt
+        .setName("matches")
+        .setDescription("How many recent matches to look at (default 10, max 25)")
+        .setMinValue(1)
+        .setMaxValue(25)
+        .setRequired(false)
+    )
+    .toJSON(),
 ];
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);

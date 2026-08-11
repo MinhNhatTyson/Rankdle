@@ -3,6 +3,7 @@ const http = require("http");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const fetch = require("node-fetch");
 const { setLink, getLink } = require("./storage");
+const { fetchRecentMatches, computeStats } = require("./matchStats");
 
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
@@ -34,6 +35,10 @@ function colorForTier(tierName) {
   return key ? TIER_COLORS[key] : 0x2b2b3a;
 }
 
+function pct(value) {
+  return value === null ? "N/A" : `${value.toFixed(1)}%`;
+}
+
 client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
@@ -50,7 +55,7 @@ client.on("interactionCreate", async (interaction) => {
     setLink(interaction.user.id, { name, tag, region });
 
     await interaction.reply({
-      content: `Linked your Riot ID as **${name}#${tag}** (${region.toUpperCase()}). You can now use /rank.`,
+      content: `Linked your Riot ID as **${name}#${tag}** (${region.toUpperCase()}). You can now use /rank and /stats.`,
       ephemeral: true,
     });
     return;
@@ -123,6 +128,74 @@ client.on("interactionCreate", async (interaction) => {
     } catch (err) {
       console.error(err);
       await interaction.editReply("Something went wrong fetching that rank. Try again shortly.");
+    }
+  }
+
+  // ---------- /stats ----------
+  if (interaction.commandName === "stats") {
+    const targetUser = interaction.options.getUser("member") || interaction.user;
+    const matchCount = interaction.options.getInteger("matches") ?? 10;
+    const link = getLink(targetUser.id);
+
+    if (!link) {
+      await interaction.reply({
+        content:
+          targetUser.id === interaction.user.id
+            ? "You haven't linked a Riot ID yet. Use `/setriot` first."
+            : `${targetUser.username} hasn't linked a Riot ID yet.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferReply();
+
+    try {
+      const { name, tag, region } = link;
+      const matches = await fetchRecentMatches({ name, tag, region, size: matchCount });
+
+      if (!matches || matches.length === 0) {
+        await interaction.editReply("Couldn't find any recent matches for that account.");
+        return;
+      }
+
+      const stats = computeStats(matches, name, tag);
+
+      if (stats.matchesConsidered === 0) {
+        await interaction.editReply("Couldn't match that Riot ID up against its own match history. Try again in a bit.");
+        return;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle(`${name}#${tag} — last ${stats.matchesConsidered} matches`)
+        .addFields(
+          {
+            name: "Most-used agent",
+            value: stats.topAgent
+              ? `${stats.topAgent.name} (${stats.topAgent.count}/${stats.matchesConsidered} games)`
+              : "N/A",
+          },
+          { name: "Headshot rate", value: pct(stats.headshotRate), inline: true },
+          {
+            name: "Win rate",
+            value:
+              stats.decidedMatches > 0
+                ? `${pct(stats.winRate)} (${stats.wins}W-${stats.decidedMatches - stats.wins}L)`
+                : "N/A (no decided matches, e.g. all Deathmatch)",
+            inline: true,
+          }
+        )
+        .setColor(0x2b2b3a)
+        .setFooter({ text: `Region: ${region.toUpperCase()}` });
+
+      await interaction.editReply({ embeds: [embed] });
+    } catch (err) {
+      console.error(err);
+      if (err.status === 404) {
+        await interaction.editReply("Couldn't find that Riot ID's match history. Double-check with `/setriot`.");
+      } else {
+        await interaction.editReply("Something went wrong fetching those stats. Try again shortly.");
+      }
     }
   }
 });
