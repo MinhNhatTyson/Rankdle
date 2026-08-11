@@ -1,0 +1,16 @@
+{
+  "name": "valorant-rank-bot",
+  "version": "1.0.0",
+  "description": "Discord bot that looks up a server member's current Valorant rank via their linked Riot ID.",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "deploy": "node deploy-commands.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^2.7.0"
+  }
+}
