@@ -3,7 +3,7 @@ const http = require("http");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const fetch = require("node-fetch");
 const { setLink, getLink } = require("./storage");
-const { fetchRecentMatches, computeStats } = require("./matchStats");
+const { fetchRecentMatches, computeStats } = require("././matchstats");
 
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
