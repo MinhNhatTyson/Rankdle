@@ -1,7 +1,18 @@
 require("dotenv").config();
+const http = require("http");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const fetch = require("node-fetch");
 const { setLink, getLink } = require("./storage");
+
+// --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
+// --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
+const PORT = process.env.PORT || 3000;
+http
+  .createServer((req, res) => {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("Valorant rank bot is running.");
+  })
+  .listen(PORT, () => console.log(`Keep-alive web server listening on port ${PORT}`));
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
