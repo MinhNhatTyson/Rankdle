@@ -3,7 +3,7 @@ const http = require("http");
 const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
 const fetch = require("node-fetch");
 const { setLink, getLink } = require("./storage");
-const { fetchRecentMatches, computeStats } = require("././matchstats");
+const { fetchRecentMatches, computeAgentStats } = require("./matchstats");
 
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
@@ -37,6 +37,64 @@ function colorForTier(tierName) {
 
 function pct(value) {
   return value === null ? "N/A" : `${value.toFixed(1)}%`;
+}
+
+function padRight(str, width) {
+  str = String(str);
+  return str.length >= width ? str.slice(0, width) : str + " ".repeat(width - str.length);
+}
+
+function padLeft(str, width) {
+  str = String(str);
+  return str.length >= width ? str.slice(0, width) : " ".repeat(width - str.length) + str;
+}
+
+function fmtNum(value, decimals = 1) {
+  return value === null || Number.isNaN(value) ? "N/A" : value.toFixed(decimals);
+}
+
+function fmtSigned(value) {
+  if (value === null || Number.isNaN(value)) return "N/A";
+  const rounded = Math.round(value);
+  return rounded > 0 ? `+${rounded}` : `${rounded}`;
+}
+
+// Renders agent rows into a fixed-width, monospace table for a code block.
+function buildAgentTable(rows) {
+  const cols = [
+    { key: "agent", label: "Agent", width: 12 },
+    { key: "matches", label: "Matches", width: 7 },
+    { key: "winRate", label: "Win%", width: 6 },
+    { key: "kd", label: "K/D", width: 5 },
+    { key: "adr", label: "ADR", width: 6 },
+    { key: "acs", label: "ACS", width: 6 },
+    { key: "dd", label: "DDΔ", width: 5 },
+    { key: "bestMap", label: "Best Map", width: 18 },
+  ];
+
+  const header = cols.map((c) => padRight(c.label, c.width)).join(" ");
+  const divider = cols.map((c) => "-".repeat(c.width)).join(" ");
+
+  const lines = rows.map((row) => {
+    const bestMapStr = row.bestMap
+      ? `${row.bestMap.name} (${row.bestMap.winRate.toFixed(0)}% WR)`
+      : "N/A";
+
+    const cells = {
+      agent: row.agentName,
+      matches: row.matches,
+      winRate: pct(row.winRate),
+      kd: fmtNum(row.kd, 2),
+      adr: fmtNum(row.adr, 0),
+      acs: fmtNum(row.acs, 0),
+      dd: fmtSigned(row.ddDelta),
+      bestMap: bestMapStr,
+    };
+
+    return cols.map((c) => padRight(cells[c.key], c.width)).join(" ");
+  });
+
+  return ["```", header, divider, ...lines, "```"].join("\n");
 }
 
 client.once("ready", () => {
@@ -159,34 +217,23 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      const stats = computeStats(matches, name, tag);
+      const agentRows = computeAgentStats(matches, name, tag, { topN: 5 });
 
-      if (stats.matchesConsidered === 0) {
-        await interaction.editReply("Couldn't match that Riot ID up against its own match history. Try again in a bit.");
+      if (agentRows.length === 0) {
+        await interaction.editReply(
+          "No matches with usable round/win data found in that sample (e.g. all Deathmatch). Try increasing `matches` or check back after a ranked/unrated game."
+        );
         return;
       }
 
       const embed = new EmbedBuilder()
-        .setTitle(`${name}#${tag} — last ${stats.matchesConsidered} matches`)
-        .addFields(
-          {
-            name: "Most-used agent",
-            value: stats.topAgent
-              ? `${stats.topAgent.name} (${stats.topAgent.count}/${stats.matchesConsidered} games)`
-              : "N/A",
-          },
-          { name: "Headshot rate", value: pct(stats.headshotRate), inline: true },
-          {
-            name: "Win rate",
-            value:
-              stats.decidedMatches > 0
-                ? `${pct(stats.winRate)} (${stats.wins}W-${stats.decidedMatches - stats.wins}L)`
-                : "N/A (no decided matches, e.g. all Deathmatch)",
-            inline: true,
-          }
+        .setTitle(`${name}#${tag} — Top Agents`)
+        .setDescription(
+          `Based on the last ${matches.length} matches pulled (Deathmatch/Escalation excluded — no rounds/win data).\n` +
+            buildAgentTable(agentRows)
         )
         .setColor(0x2b2b3a)
-        .setFooter({ text: `Region: ${region.toUpperCase()}` });
+        .setFooter({ text: `Region: ${region.toUpperCase()} • DDΔ = your ACS vs. lobby average ACS` });
 
       await interaction.editReply({ embeds: [embed] });
     } catch (err) {

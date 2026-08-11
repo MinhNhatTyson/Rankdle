@@ -1,14 +1,16 @@
 // Fetches recent match history from HenrikDev's v4 matches endpoint and
-// crunches it into: most-played agent, headshot rate, and win rate.
+// crunches it into a per-agent breakdown similar to tracker.gg's "Top Agents"
+// table: matches played, win %, K/D, ADR, ACS, DDΔ (combat score vs. lobby
+// average), and best map (by win rate).
+//
+// Only matches with real team/round scoring are counted (Competitive,
+// Unrated, Spike Rush, etc.) — Deathmatch/Escalation don't have rounds or a
+// win/loss result, so ADR/ACS/win-rate can't be computed for them and they're
+// skipped entirely.
 
 const fetch = require("node-fetch");
 
-// Modes where there's no "you won / you lost" outcome (free-for-all style).
-// Matches in these modes are counted toward agent usage and headshot rate,
-// but excluded from the win-rate calculation.
-const NO_TEAM_RESULT_MODES = new Set(["deathmatch", "escalation"]);
-
-async function fetchRecentMatches({ name, tag, region, size = 10 }) {
+async function fetchRecentMatches({ name, tag, region, size = 15 }) {
   const url = `https://api.henrikdev.xyz/valorant/v4/matches/${region}/pc/${encodeURIComponent(
     name
   )}/${encodeURIComponent(tag)}?size=${size}`;
@@ -27,7 +29,6 @@ async function fetchRecentMatches({ name, tag, region, size = 10 }) {
   return body?.data ?? [];
 }
 
-// Pulls this player's entry out of a single match's player list.
 function findPlayerInMatch(match, name, tag) {
   const players = match?.players ?? [];
   return players.find(
@@ -35,55 +36,129 @@ function findPlayerInMatch(match, name, tag) {
   );
 }
 
-function computeStats(matches, name, tag) {
-  const agentCounts = {};
-  let totalHeadshots = 0;
-  let totalBodyshots = 0;
-  let totalLegshots = 0;
-  let matchesConsidered = 0;
-  let wins = 0;
-  let decidedMatches = 0;
+// The HenrikDev API has renamed this field across versions
+// (damage_made -> damage.made). Check both so we don't silently break.
+function getDamageMade(stats) {
+  if (!stats) return null;
+  if (typeof stats.damage?.made === "number") return stats.damage.made;
+  if (typeof stats.damage_made === "number") return stats.damage_made;
+  return null;
+}
+
+function getRoundsPlayed(match) {
+  const teams = match?.teams;
+  if (!teams?.red || !teams?.blue) return 0;
+  const red = (teams.red.rounds_won ?? 0) + (teams.red.rounds_lost ?? 0);
+  return red > 0 ? red : 0;
+}
+
+function computeAgentStats(matches, name, tag, { topN = 5 } = {}) {
+  const agents = {}; // agentName -> accumulator
 
   for (const match of matches) {
     const me = findPlayerInMatch(match, name, tag);
-    if (!me) continue; // shouldn't normally happen, but guard just in case
+    if (!me) continue;
 
-    matchesConsidered++;
+    const roundsPlayed = getRoundsPlayed(match);
+    if (roundsPlayed <= 0) continue; // no clean team/round data, e.g. Deathmatch
 
-    const agentName = me.agent?.name;
-    if (agentName) {
-      agentCounts[agentName] = (agentCounts[agentName] || 0) + 1;
-    }
-
-    const stats = me.stats ?? {};
-    totalHeadshots += stats.headshots ?? 0;
-    totalBodyshots += stats.bodyshots ?? 0;
-    totalLegshots += stats.legshots ?? 0;
-
-    const queueId = match?.metadata?.queue?.id;
-    const teams = match?.teams;
     const teamId = me.team_id?.toLowerCase();
+    const teamResult = match.teams?.[teamId];
+    if (!teamResult) continue;
 
-    if (!NO_TEAM_RESULT_MODES.has(queueId) && teams && teamId && teams[teamId]) {
-      decidedMatches++;
-      if (teams[teamId].has_won) wins++;
+    const agentName = me.agent?.name ?? "Unknown";
+    const acc = (agents[agentName] ??= {
+      matches: 0,
+      wins: 0,
+      kills: 0,
+      deaths: 0,
+      damageMade: 0,
+      hasDamage: false,
+      roundsPlayed: 0,
+      scoreSum: 0,
+      ddSum: 0,
+      ddCount: 0,
+      playtimeMs: 0,
+      mapStats: {},
+    });
+
+    acc.matches++;
+    acc.playtimeMs += match.metadata?.game_length_in_ms ?? 0;
+    acc.kills += me.stats?.kills ?? 0;
+    acc.deaths += me.stats?.deaths ?? 0;
+    acc.roundsPlayed += roundsPlayed;
+    acc.scoreSum += me.stats?.score ?? 0;
+
+    const damageMade = getDamageMade(me.stats);
+    if (damageMade !== null) {
+      acc.damageMade += damageMade;
+      acc.hasDamage = true;
     }
+
+    const won = !!teamResult.has_won;
+    if (won) acc.wins++;
+
+    // DDΔ: this player's combat score for the match vs. the average combat
+    // score of everyone in the lobby that match.
+    const allPlayers = match.players ?? [];
+    let lobbyAcsSum = 0;
+    let lobbyCount = 0;
+    for (const p of allPlayers) {
+      if (typeof p.stats?.score === "number") {
+        lobbyAcsSum += p.stats.score / roundsPlayed;
+        lobbyCount++;
+      }
+    }
+    if (lobbyCount > 0) {
+      const lobbyAvgAcs = lobbyAcsSum / lobbyCount;
+      const myAcs = (me.stats?.score ?? 0) / roundsPlayed;
+      acc.ddSum += myAcs - lobbyAvgAcs;
+      acc.ddCount++;
+    }
+
+    const mapName = match.metadata?.map?.name ?? "Unknown";
+    const mapAcc = (acc.mapStats[mapName] ??= { matches: 0, wins: 0 });
+    mapAcc.matches++;
+    if (won) mapAcc.wins++;
   }
 
-  const totalShots = totalHeadshots + totalBodyshots + totalLegshots;
-  const headshotRate = totalShots > 0 ? (totalHeadshots / totalShots) * 100 : null;
-  const winRate = decidedMatches > 0 ? (wins / decidedMatches) * 100 : null;
+  const rows = Object.entries(agents).map(([agentName, acc]) => {
+    const winRate = acc.matches > 0 ? (acc.wins / acc.matches) * 100 : null;
+    const kd = acc.deaths > 0 ? acc.kills / acc.deaths : acc.kills;
+    const adr = acc.hasDamage && acc.roundsPlayed > 0 ? acc.damageMade / acc.roundsPlayed : null;
+    const acs = acc.roundsPlayed > 0 ? acc.scoreSum / acc.roundsPlayed : null;
+    const ddDelta = acc.ddCount > 0 ? acc.ddSum / acc.ddCount : null;
+    const hours = acc.playtimeMs / 3_600_000;
 
-  const topAgent = Object.entries(agentCounts).sort((a, b) => b[1] - a[1])[0] ?? null;
+    let bestMap = null;
+    for (const [mapName, mapAcc] of Object.entries(acc.mapStats)) {
+      const mapWinRate = mapAcc.matches > 0 ? (mapAcc.wins / mapAcc.matches) * 100 : 0;
+      if (
+        !bestMap ||
+        mapWinRate > bestMap.winRate ||
+        (mapWinRate === bestMap.winRate && mapAcc.matches > bestMap.matches)
+      ) {
+        bestMap = { name: mapName, winRate: mapWinRate, matches: mapAcc.matches };
+      }
+    }
 
-  return {
-    matchesConsidered,
-    topAgent: topAgent ? { name: topAgent[0], count: topAgent[1] } : null,
-    headshotRate,
-    winRate,
-    wins,
-    decidedMatches,
-  };
+    return {
+      agentName,
+      matches: acc.matches,
+      winRate,
+      kd,
+      adr,
+      acs,
+      ddDelta,
+      hours,
+      bestMap,
+    };
+  });
+
+  // Mirrors tracker.gg: ranked by total time played on that agent.
+  rows.sort((a, b) => b.hours - a.hours);
+
+  return rows.slice(0, topN);
 }
 
-module.exports = { fetchRecentMatches, computeStats };
+module.exports = { fetchRecentMatches, computeAgentStats };
