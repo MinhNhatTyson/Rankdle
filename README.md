@@ -41,3 +41,28 @@ A simple Discord bot that lets members link their Riot ID and check anyone's cur
 - Rank links are stored in `links.json` in this folder — back it up if you move hosts.
 - If you want the bot online 24/7, deploy this folder to a host like Railway or Render and set the same environment variables there.
 - The HenrikDev API is an unofficial, community-run wrapper around Riot's data — not affiliated with Riot Games. Its free tier has rate limits, which is plenty for a normal-sized server.
+## Activity Tags
+
+The bot tracks how active each member is (messages sent, reactions given/received, voice
+channel time) and auto-assigns one Discord role per member:
+
+- **Người mới** — joined within the last 7 days
+- **Ít tương tác** — established member with low overall activity
+- **Nói nhiều** — heavy chatter (top 20% by messages)
+- **Cày voice** — heavy voice user (top 20% by voice time)
+- **Năng nổ** — above-average overall engagement
+- **Bình thường** — everyone else
+
+Run `/recalc-tags` (requires Manage Roles) whenever you want to refresh tags — there's no automatic schedule.
+
+**Extra setup required for this feature:**
+1. Developer Portal → your app → Bot → enable **"Server Members Intent"** (privileged).
+2. The bot needs the **Manage Roles** permission. If already invited, either re-invite
+   with an updated OAuth2 URL (add `Manage Roles` to the permissions checklist) or grant
+   it directly to the bot's role in Server Settings → Roles.
+3. In Server Settings → Roles, make sure the bot's own role sits **above** the tag roles
+   it creates (Discord places new roles near the bottom by default — drag the bot's role
+   higher if needed).
+4. Re-run `npm run deploy` to register the new `/recalc-tags` command.
+
+Activity data is stored in `activity.json` next to `links.json` — back it up the same way.

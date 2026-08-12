@@ -1,10 +1,22 @@
 require("dotenv").config();
 const http = require("http");
-const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+const { Client, GatewayIntentBits, Partials, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const fetch = require("node-fetch");
 const { setLink, getLink } = require("./storage");
 const { fetchRecentMatches, computeAgentStats } = require("./matchstats");
+const { recordMessage, recordReactionGiven, recordReactionReceived, addVoiceTime, flush: flushActivity } = require("./activity");
+const { recalculateTags } = require("./applyTags");
 
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMembers,
+  ],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+});
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
 const PORT = process.env.PORT || 3000;
@@ -97,9 +109,77 @@ function buildAgentTable(rows) {
   return ["```", header, divider, ...lines, "```"].join("\n");
 }
 
+async function runTagRecalculation() {
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      const { totalMembers, changed } = await recalculateTags(guild);
+      console.log(`[tags] ${guild.name}: checked ${totalMembers} members, updated ${changed}.`);
+    } catch (err) {
+      console.error(`[tags] Failed for ${guild.name}:`, err.message);
+    }
+  }
+}
+
 client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
+
+client.on("messageCreate", (message) => {
+  if (message.author.bot || !message.guild) return;
+  recordMessage(message.author.id);
+});
+
+client.on("messageReactionAdd", async (reaction, user) => {
+  if (user.bot) return;
+  try {
+    if (reaction.partial) await reaction.fetch();
+    if (reaction.message.partial) await reaction.message.fetch();
+  } catch (err) {
+    console.error("Failed to fetch partial reaction:", err.message);
+    return;
+  }
+  if (!reaction.message.guild) return;
+  recordReactionGiven(user.id);
+  const authorId = reaction.message.author?.id;
+  if (authorId && authorId !== user.id && !reaction.message.author.bot) {
+    recordReactionReceived(authorId);
+  }
+});
+
+const voiceJoinTimestamps = new Map(); // userId -> timestamp entered voice
+
+client.on("voiceStateUpdate", (oldState, newState) => {
+  const userId = newState.id;
+  const wasInVoice = !!oldState.channelId;
+  const isInVoice = !!newState.channelId;
+
+  if (!wasInVoice && isInVoice) {
+    voiceJoinTimestamps.set(userId, Date.now());
+  } else if (wasInVoice && !isInVoice) {
+    const joinedAt = voiceJoinTimestamps.get(userId);
+    if (joinedAt) {
+      addVoiceTime(userId, Date.now() - joinedAt);
+      voiceJoinTimestamps.delete(userId);
+    }
+  }
+  // switching channels while staying in voice keeps the session running
+});
+
+function closeOpenVoiceSessions() {
+  const now = Date.now();
+  for (const [userId, joinedAt] of voiceJoinTimestamps) {
+    addVoiceTime(userId, now - joinedAt);
+  }
+  voiceJoinTimestamps.clear();
+}
+
+function shutdown() {
+  closeOpenVoiceSessions();
+  flushActivity();
+  process.exit(0);
+}
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -244,6 +324,23 @@ client.on("interactionCreate", async (interaction) => {
         await interaction.editReply("Something went wrong fetching those stats. Try again shortly.");
       }
     }
+  }
+
+  // ---------- /recalc-tags ----------
+  if (interaction.commandName === "recalc-tags") {
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageRoles)) {
+      await interaction.reply({ content: "You need the Manage Roles permission to run this.", ephemeral: true });
+      return;
+    }
+    await interaction.deferReply({ ephemeral: true });
+    try {
+      const { totalMembers, changed } = await recalculateTags(interaction.guild);
+      await interaction.editReply(`Recalculated tags for ${totalMembers} members — ${changed} role updates made.`);
+    } catch (err) {
+      console.error(err);
+      await interaction.editReply(`Couldn't recalculate tags: ${err.message}`);
+    }
+    return;
   }
 });
 

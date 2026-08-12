@@ -2,7 +2,7 @@
 //   node deploy-commands.js
 
 require("dotenv").config();
-const { REST, Routes, SlashCommandBuilder } = require("discord.js");
+const { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 
 const commands = [
   new SlashCommandBuilder()
@@ -52,6 +52,12 @@ const commands = [
         .setMaxValue(25)
         .setRequired(false)
     )
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("recalc-tags")
+    .setDescription("Recalculate and reassign activity tags for all members")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
     .toJSON(),
 ];
 
