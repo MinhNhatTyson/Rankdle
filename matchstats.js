@@ -31,8 +31,10 @@ async function fetchRecentMatches({ name, tag, region, size = 15 }) {
 
 function findPlayerInMatch(match, name, tag) {
   const players = match?.players ?? [];
+  const wantName = name.trim().toLowerCase();
+  const wantTag = tag.trim().toLowerCase();
   return players.find(
-    (p) => p.name?.toLowerCase() === name.toLowerCase() && p.tag?.toLowerCase() === tag.toLowerCase()
+    (p) => p.name?.trim().toLowerCase() === wantName && p.tag?.trim().toLowerCase() === wantTag
   );
 }
 
@@ -45,26 +47,56 @@ function getDamageMade(stats) {
   return null;
 }
 
-function getRoundsPlayed(match) {
-  const teams = match?.teams;
-  if (!teams?.red || !teams?.blue) return 0;
-  const red = (teams.red.rounds_won ?? 0) + (teams.red.rounds_lost ?? 0);
-  return red > 0 ? red : 0;
+function getTeamsAndRounds(match) {
+  const rawTeams = match?.teams;
+  let teams = null;
+  if (rawTeams && typeof rawTeams === "object") {
+    teams = {};
+    for (const [key, value] of Object.entries(rawTeams)) {
+      teams[key.toLowerCase()] = value;   // "Red"/"Blue" -> "red"/"blue"
+    }
+  }
+
+  let roundsPlayed = 0;
+  if (teams?.red && teams?.blue) {
+    roundsPlayed = (teams.red.rounds_won ?? 0) + (teams.red.rounds_lost ?? 0);
+  }
+  if (roundsPlayed <= 0 && typeof match?.metadata?.rounds_played === "number") {
+    roundsPlayed = match.metadata.rounds_played;   // fallback #1
+  }
+  if (roundsPlayed <= 0 && Array.isArray(match?.rounds)) {
+    roundsPlayed = match.rounds.length;            // fallback #2
+  }
+
+  return { teams, roundsPlayed };
 }
 
-function computeAgentStats(matches, name, tag, { topN = 5 } = {}) {
+function computeAgentStats(matches, name, tag, { topN = 5, debug = false } = {}) {
   const agents = {}; // agentName -> accumulator
+  const skipCounts = { playerNotFound: 0, noRoundData: 0, noTeamResult: 0 };
 
   for (const match of matches) {
     const me = findPlayerInMatch(match, name, tag);
-    if (!me) continue;
+    if (!me) {
+      skipCounts.playerNotFound++;
+      if (debug) console.log(`[stats debug] player not found in match ...`);
+      continue;
+    }
 
-    const roundsPlayed = getRoundsPlayed(match);
-    if (roundsPlayed <= 0) continue; // no clean team/round data, e.g. Deathmatch
+    const { teams, roundsPlayed } = getTeamsAndRounds(match);
+    if (roundsPlayed <= 0) {
+      skipCounts.noRoundData++;
+      if (debug) console.log(`[stats debug] no round data ...`);
+      continue;
+    }
 
     const teamId = me.team_id?.toLowerCase();
-    const teamResult = match.teams?.[teamId];
-    if (!teamResult) continue;
+    const teamResult = teams?.[teamId];
+    if (!teamResult) {
+      skipCounts.noTeamResult++;
+      if (debug) console.log(`[stats debug] no team result ...`);
+      continue;
+    }
 
     const agentName = me.agent?.name ?? "Unknown";
     const acc = (agents[agentName] ??= {
@@ -157,8 +189,7 @@ function computeAgentStats(matches, name, tag, { topN = 5 } = {}) {
 
   // Mirrors tracker.gg: ranked by total time played on that agent.
   rows.sort((a, b) => b.hours - a.hours);
-
-  return rows.slice(0, topN);
+  return { rows: rows.slice(0, topN), skipCounts, totalMatches: matches.length };
 }
 
 module.exports = { fetchRecentMatches, computeAgentStats };

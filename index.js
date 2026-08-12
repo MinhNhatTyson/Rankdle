@@ -313,11 +313,23 @@ client.on("interactionCreate", async (interaction) => {
         return;
       }
 
-      const agentRows = computeAgentStats(matches, name, tag, { topN: 5 });
+      const { rows: agentRows, skipCounts, totalMatches } = computeAgentStats(matches, name, tag, {
+        topN: 5,
+        debug: process.env.DEBUG_STATS === "true",
+      });
+
 
       if (agentRows.length === 0) {
+        let reason = "No matches with usable round/win data found in that sample.";
+        if (skipCounts.playerNotFound === totalMatches) {
+          reason = `Couldn't match "${name}#${tag}" against any of the ${totalMatches} matches pulled — the name/tag on file may be out of date. Try re-linking with \`/setriot\`.`;
+        } else if (skipCounts.noRoundData === totalMatches) {
+          reason = `All ${totalMatches} matches pulled had no rounds/win data (e.g. all Deathmatch/Escalation). Try increasing \`matches\` or check back after a ranked/unrated game.`;
+        } else if (skipCounts.noTeamResult > 0) {
+          reason = `Found matches but couldn't resolve a team result for ${skipCounts.noTeamResult} of them — this looks like an API data-shape issue rather than a Deathmatch issue.`;
+        }
         await interaction.editReply(
-          "No matches with usable round/win data found in that sample (e.g. all Deathmatch). Try increasing `matches` or check back after a ranked/unrated game."
+          reason + (process.env.DEBUG_STATS === "true" ? "\n(Debug logging is on — check the bot's console/logs for per-match details.)" : "")
         );
         return;
       }
