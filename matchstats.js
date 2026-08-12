@@ -47,13 +47,25 @@ function getDamageMade(stats) {
   return null;
 }
 
+// Returns { teams, roundsPlayed }. Normalizes `teams` into a lowercase-keyed
+// object ({ red: {...}, blue: {...} }) regardless of whether the API returns
+// it that way already, or as an array of team objects (e.g.
+// [{ team_id: "Red", ... }, { team_id: "Blue", ... }]) — we've seen both
+// shapes reported for this API across versions.
 function getTeamsAndRounds(match) {
   const rawTeams = match?.teams;
   let teams = null;
-  if (rawTeams && typeof rawTeams === "object") {
+
+  if (Array.isArray(rawTeams)) {
+    teams = {};
+    for (const entry of rawTeams) {
+      const key = (entry?.team_id ?? entry?.team ?? entry?.id ?? "").toString().toLowerCase();
+      if (key) teams[key] = entry;
+    }
+  } else if (rawTeams && typeof rawTeams === "object") {
     teams = {};
     for (const [key, value] of Object.entries(rawTeams)) {
-      teams[key.toLowerCase()] = value;   // "Red"/"Blue" -> "red"/"blue"
+      teams[key.toLowerCase()] = value;
     }
   }
 
@@ -62,10 +74,10 @@ function getTeamsAndRounds(match) {
     roundsPlayed = (teams.red.rounds_won ?? 0) + (teams.red.rounds_lost ?? 0);
   }
   if (roundsPlayed <= 0 && typeof match?.metadata?.rounds_played === "number") {
-    roundsPlayed = match.metadata.rounds_played;   // fallback #1
+    roundsPlayed = match.metadata.rounds_played;
   }
   if (roundsPlayed <= 0 && Array.isArray(match?.rounds)) {
-    roundsPlayed = match.rounds.length;            // fallback #2
+    roundsPlayed = match.rounds.length;
   }
 
   return { teams, roundsPlayed };
@@ -79,22 +91,44 @@ function computeAgentStats(matches, name, tag, { topN = 5, debug = false } = {})
     const me = findPlayerInMatch(match, name, tag);
     if (!me) {
       skipCounts.playerNotFound++;
-      if (debug) console.log(`[stats debug] player not found in match ...`);
+      if (debug) {
+        const firstPlayer = match?.players?.[0];
+        console.log("[stats debug] ---- player not found ----");
+        console.log(`[stats debug] match_id=${match?.metadata?.match_id ?? "?"}`);
+        console.log(`[stats debug] first payload player name=${firstPlayer?.name} tag=${firstPlayer?.tag}`);
+      }
       continue;
     }
 
     const { teams, roundsPlayed } = getTeamsAndRounds(match);
     if (roundsPlayed <= 0) {
       skipCounts.noRoundData++;
-      if (debug) console.log(`[stats debug] no round data ...`);
-      continue;
+      if (debug) {
+        console.log("[stats debug] ---- no round data ----");
+        console.log(`[stats debug] match_id=${match?.metadata?.match_id ?? "?"}`);
+        console.log(`[stats debug] queue=${match?.metadata?.queue?.id ?? "?"}`);
+        console.log(`[stats debug] raw teams type=${Array.isArray(match?.teams) ? "array" : typeof match?.teams}`);
+      }
+      continue; // no clean team/round data, e.g. Deathmatch
     }
 
-    const teamId = me.team_id?.toLowerCase();
+    const teamId = me.team_id?.trim().toLowerCase();
     const teamResult = teams?.[teamId];
     if (!teamResult) {
       skipCounts.noTeamResult++;
-      if (debug) console.log(`[stats debug] no team result ...`);
+      if (debug) {
+        console.log("[stats debug] ---- no team result ----");
+        console.log(`[stats debug] match_id=${match?.metadata?.match_id ?? "?"}`);
+        console.log(`[stats debug] me.team_id (raw)=${me.team_id}`);
+        console.log(`[stats debug] normalized teamId=${teamId}`);
+        console.log(`[stats debug] resolved teams keys=${teams ? Object.keys(teams).join(",") : "none"}`);
+        console.log(`[stats debug] raw match.teams type=${Array.isArray(match?.teams) ? "array" : typeof match?.teams}`);
+        try {
+          console.log(`[stats debug] raw match.teams=${JSON.stringify(match?.teams)}`);
+        } catch {
+          console.log("[stats debug] raw match.teams could not be stringified");
+        }
+      }
       continue;
     }
 
@@ -189,6 +223,7 @@ function computeAgentStats(matches, name, tag, { topN = 5, debug = false } = {})
 
   // Mirrors tracker.gg: ranked by total time played on that agent.
   rows.sort((a, b) => b.hours - a.hours);
+
   return { rows: rows.slice(0, topN), skipCounts, totalMatches: matches.length };
 }
 
