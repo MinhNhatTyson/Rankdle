@@ -7,16 +7,6 @@ const { fetchRecentMatches, computeAgentStats } = require("./matchstats");
 const { recordMessage, recordReactionGiven, recordReactionReceived, addVoiceTime, flush: flushActivity } = require("./activity");
 const { recalculateTags } = require("./applyTags");
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildMessageReactions,
-    GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.GuildMembers,
-  ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
-});
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
 const PORT = process.env.PORT || 3000;
@@ -27,7 +17,16 @@ http
   })
   .listen(PORT, () => console.log(`Keep-alive web server listening on port ${PORT}`));
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMembers,
+  ],
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
+});
 
 // Rank tier colors just for nicer embeds (rough approximation)
 const TIER_COLORS = {
