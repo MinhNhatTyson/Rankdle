@@ -85,3 +85,40 @@ Everyone gets the same agent each day (based on the UTC date), and you get 8 gue
 stored in `agentleState.json`, streaks in `agentleStats.json` — back these up the same way as
 `links.json`. The agent list lives in `valorantAgents.js`; add a row there whenever Riot ships a
 new agent (colors are a rough approximation, not official Riot data — edit freely).
+
+## Guess the Rank (Rankdle)
+
+Members upload short gameplay clips of themselves along with their real rank in a
+private channel. Once a day, the bot randomly picks up to 5 not-yet-used clips,
+strips uploader identity, and posts them to a public channel for everyone else to
+guess the rank of.
+
+- `/upload-video video:<clip> rank:<tier>` — upload a clip (only works in the
+  designated private upload channel)
+- `/rankdle guess clip:<1-5> rank:<tier>` — guess the rank of one of today's clips
+  (you can't guess your own clip, and only one guess per clip per day)
+- `/rankdle status` — see which of today's clips you've guessed and whether you got
+  them right
+- `/rankdle stats` — see your lifetime accuracy
+
+**Setup required:**
+1. Create a private channel (e.g. `#uploading-video`) — deny `@everyone` view
+   access, and allow only the bot's role and your admin role.
+2. Create a public channel (e.g. `#guess-the-rank`) where the bot posts each day's
+   anonymized clips.
+3. Set `UPLOAD_CHANNEL_ID` and `GUESS_CHANNEL_ID` in your environment variables to
+   those two channel IDs.
+4. Re-run `npm run deploy` to register `/upload-video` and `/rankdle`.
+
+**How the daily pool works:** the pool is generated lazily — the first time anyone
+runs `/rankdle` on a given UTC day, the bot randomly selects up to 5 pending clips
+and posts them. There's no scheduler, so nothing happens until someone actually
+runs the command that day.
+
+Data is stored in `rankdleVideos.json`, `rankdlePools.json`, `rankdleGuesses.json`,
+and `rankdleStats.json` — back these up the same way as `links.json`.
+
+**Caveat:** Discord attachment URLs are signed and expire after a while. To avoid
+posting dead links days after upload, the bot immediately re-hosts every uploaded
+clip as its own message in the upload channel and re-fetches that message (for a
+fresh URL) whenever the clip is later used in a daily pool.

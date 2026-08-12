@@ -3,6 +3,7 @@
 
 require("dotenv").config();
 const { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+const { tierChoices } = require("./rankTiers");
 
 const commands = [
   new SlashCommandBuilder()
@@ -82,6 +83,41 @@ const commands = [
     )
     .addSubcommand((sub) => sub.setName("status").setDescription("Show your progress on today's puzzle"))
     .addSubcommand((sub) => sub.setName("giveup").setDescription("Reveal today's answer and end your run"))
+    .toJSON(),
+
+  // inside the `commands` array, after the /agentle command:
+
+  new SlashCommandBuilder()
+    .setName("upload-video")
+    .setDescription("Upload a gameplay clip + your real rank for Guess the Rank (upload channel only)")
+    .addAttachmentOption((opt) =>
+      opt.setName("video").setDescription("Short gameplay clip").setRequired(true)
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName("rank")
+        .setDescription("Your real rank in this clip")
+        .setRequired(true)
+        .addChoices(...tierChoices())
+    )
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("rankdle")
+    .setDescription("Guess the Rank — guess the rank shown in today's anonymized clips")
+    .addSubcommand((sub) =>
+      sub
+        .setName("guess")
+        .setDescription("Guess the rank for one of today's clips")
+        .addIntegerOption((opt) =>
+          opt.setName("clip").setDescription("Clip number (1-5)").setRequired(true).setMinValue(1).setMaxValue(5)
+        )
+        .addStringOption((opt) =>
+          opt.setName("rank").setDescription("Your guess").setRequired(true).addChoices(...tierChoices())
+        )
+    )
+    .addSubcommand((sub) => sub.setName("status").setDescription("See which of today's clips you've guessed"))
+    .addSubcommand((sub) => sub.setName("stats").setDescription("See your lifetime Guess the Rank accuracy"))
     .toJSON(),
 ];
 

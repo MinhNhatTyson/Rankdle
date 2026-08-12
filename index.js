@@ -32,6 +32,8 @@ const {
   compareGuess,
 } = require("./agentle");
 const { getOrCreateGame, saveGame, recordResult } = require("./agentleStorage");
+const { addSubmission, getVideo, getUserGuesses, recordGuess, recordStatGuess, getStats: getRankdleStats } = require("./rankdleStorage");
+const { dateKeyFor: rankdleDateKeyFor, ensureDailyPool, compareTierGuess } = require("./rankdle");
 
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
