@@ -64,6 +64,25 @@ const commands = [
     .setName("member")
     .setDescription("List every member in the server with their current activity tag")
     .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("agentle")
+    .setDescription("Guess today's mystery Valorant agent")
+    .addSubcommand((sub) =>
+      sub
+        .setName("guess")
+        .setDescription("Make a guess for today's agent")
+        .addStringOption((opt) =>
+          opt
+            .setName("agent")
+            .setDescription("Which agent do you think it is?")
+            .setRequired(true)
+            .setAutocomplete(true)
+        )
+    )
+    .addSubcommand((sub) => sub.setName("status").setDescription("Show your progress on today's puzzle"))
+    .addSubcommand((sub) => sub.setName("giveup").setDescription("Reveal today's answer and end your run"))
+    .toJSON(),
 ];
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);

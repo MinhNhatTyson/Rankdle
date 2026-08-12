@@ -23,6 +23,15 @@ const {
 } = require("./activity");
 const { recalculateTags, getMemberTag } = require("./applyTags");
 const { MANAGED_TAGS } = require("./tagging");
+const {
+  MAX_GUESSES,
+  dateKeyFor,
+  agentOfTheDay,
+  findAgentByName,
+  searchAgentNames,
+  compareGuess,
+} = require("./agentle");
+const { getOrCreateGame, saveGame, recordResult } = require("./agentleStorage");
 
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
@@ -196,6 +205,52 @@ function shutdown() {
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+function formatGuessLine(cmp) {
+  const check = (correct) => (correct ? "🟩" : "🟥");
+  let yearEmoji = "🟩";
+  let yearArrow = "";
+  if (!cmp.releaseYear.correct) {
+    yearEmoji = cmp.releaseYear.close ? "🟨" : "🟥";
+    yearArrow = cmp.releaseYear.direction === "up" ? "⬆️" : "⬇️";
+  }
+
+  return (
+    `**${cmp.name}**\n` +
+    `${check(cmp.role.correct)} Role: ${cmp.role.value}  ` +
+    `${check(cmp.origin.correct)} Origin: ${cmp.origin.value}  ` +
+    `${check(cmp.color.correct)} Color: ${cmp.color.value}  ` +
+    `${check(cmp.gender.correct)} Gender: ${cmp.gender.value}  ` +
+    `${yearEmoji} Year: ${cmp.releaseYear.value} ${yearArrow}`
+  );
+}
+
+function buildAgentleEmbed(state, { finished = false, answerAgent = null } = {}) {
+  const embed = new EmbedBuilder()
+    .setTitle("🕵️ Agentle — Guess the Valorant Agent")
+    .setColor(0xff4655)
+    .setFooter({ text: `Guess ${state.guesses.length}/${MAX_GUESSES}` });
+
+  embed.setDescription(
+    state.guesses.length === 0
+      ? "Use `/agentle guess agent:<name>` to make your first guess.\n" +
+        "Each guess reveals Role, Origin, Primary Color, Gender, and Release Year — 🟩 match, 🟨 close, 🟥 no match."
+      : state.guesses.map(formatGuessLine).join("\n\n")
+  );
+
+  if (finished && answerAgent) {
+    const label = state.solved ? "🎉 Solved!" : state.gaveUp ? "Answer revealed" : "Out of guesses";
+    embed.addFields({ name: label, value: `Today's agent was **${answerAgent.name}**.` });
+  }
+
+  return embed;
+}
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isAutocomplete() || interaction.commandName !== "agentle") return;
+  const focused = interaction.options.getFocused();
+  await interaction.respond(searchAgentNames(focused));
+});
 
 client.on("interactionCreate", async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
@@ -469,6 +524,74 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.editReply("Something went wrong fetching the member list.");
     }
     return;
+  }
+
+  // ---------- /agentle ----------
+  if (interaction.commandName === "agentle") {
+    const sub = interaction.options.getSubcommand();
+    const dateKey = dateKeyFor();
+    const answer = agentOfTheDay(dateKey);
+    const state = getOrCreateGame(interaction.user.id, dateKey, answer.id);
+    const isFinished = state.solved || state.gaveUp || state.guesses.length >= MAX_GUESSES;
+
+    if (sub === "status") {
+      await interaction.reply({
+        embeds: [buildAgentleEmbed(state, { finished: isFinished, answerAgent: isFinished ? answer : null })],
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (sub === "giveup") {
+      if (isFinished) {
+        await interaction.reply({ embeds: [buildAgentleEmbed(state, { finished: true, answerAgent: answer })] });
+        return;
+      }
+      state.gaveUp = true;
+      saveGame(interaction.user.id, state);
+      recordResult(interaction.user.id, dateKey, false);
+      await interaction.reply({ embeds: [buildAgentleEmbed(state, { finished: true, answerAgent: answer })] });
+      return;
+    }
+
+    if (sub === "guess") {
+      if (isFinished) {
+        await interaction.reply({
+          content: state.solved || state.gaveUp
+            ? "You've already finished today's puzzle. Come back tomorrow!"
+            : "You're out of guesses for today. Come back tomorrow!",
+          ephemeral: true,
+        });
+        return;
+      }
+
+      const guessName = interaction.options.getString("agent");
+      const guessAgent = findAgentByName(guessName);
+      if (!guessAgent) {
+        await interaction.reply({
+          content: `Couldn't find an agent named "${guessName}". Pick one from the autocomplete list.`,
+          ephemeral: true,
+        });
+        return;
+      }
+      if (state.guesses.some((g) => g.id === guessAgent.id)) {
+        await interaction.reply({ content: "You've already guessed that agent today.", ephemeral: true });
+        return;
+      }
+
+      const cmp = compareGuess(guessAgent, answer);
+      state.guesses.push(cmp);
+      if (cmp.isCorrect) state.solved = true;
+
+      const nowFinished = state.solved || state.guesses.length >= MAX_GUESSES;
+      saveGame(interaction.user.id, state);
+      if (nowFinished) recordResult(interaction.user.id, dateKey, state.solved);
+
+      await interaction.reply({
+        embeds: [buildAgentleEmbed(state, nowFinished ? { finished: true, answerAgent: answer } : {})],
+      });
+      return;
+    }
   }
 });
 

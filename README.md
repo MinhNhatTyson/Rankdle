@@ -70,3 +70,18 @@ Activity data is stored in `activity.json` next to `links.json` — back it up t
 Run `/member` to see every member's current tag, sorted by tag then name. If the
 server has more than 15 members it paginates automatically — use the ◀/▶ buttons
 (only the person who ran the command can navigate; buttons disable after 2 minutes idle).
+
+## Agent Guessing Game (Agentle)
+
+A Wordle/LoLdle-style daily game — guess the mystery Valorant agent based on trait feedback.
+
+- `/agentle guess agent:<name>` — make a guess (autocomplete helps with names). Each guess shows
+  🟩/🟨/🟥 feedback for **Role, Origin, Primary Color, Gender**, and **Release Year** (with an
+  ⬆️/⬇️ arrow if you're off), so it takes a few guesses to narrow it down.
+- `/agentle status` — check your progress on today's puzzle without spending a guess.
+- `/agentle giveup` — reveal the answer and forfeit today's streak.
+
+Everyone gets the same agent each day (based on the UTC date), and you get 8 guesses. Progress is
+stored in `agentleState.json`, streaks in `agentleStats.json` — back these up the same way as
+`links.json`. The agent list lives in `valorantAgents.js`; add a row there whenever Riot ships a
+new agent (colors are a rough approximation, not official Riot data — edit freely).
