@@ -1,11 +1,28 @@
 require("dotenv").config();
 const http = require("http");
-const { Client, GatewayIntentBits, Partials, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
+const {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  EmbedBuilder,
+  PermissionFlagsBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ComponentType,
+} = require("discord.js");
 const fetch = require("node-fetch");
 const { setLink, getLink } = require("./storage");
 const { fetchRecentMatches, computeAgentStats } = require("./matchstats");
-const { recordMessage, recordReactionGiven, recordReactionReceived, addVoiceTime, flush: flushActivity } = require("./activity");
-const { recalculateTags } = require("./applyTags");
+const {
+  recordMessage,
+  recordReactionGiven,
+  recordReactionReceived,
+  addVoiceTime,
+  flush: flushActivity,
+} = require("./activity");
+const { recalculateTags, getMemberTag } = require("./applyTags");
+const { MANAGED_TAGS } = require("./tagging");
 
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
@@ -338,6 +355,106 @@ client.on("interactionCreate", async (interaction) => {
     } catch (err) {
       console.error(err);
       await interaction.editReply(`Couldn't recalculate tags: ${err.message}`);
+    }
+    return;
+  }
+
+  // ---------- /member ----------
+  if (interaction.commandName === "member") {
+    await interaction.deferReply();
+
+    try {
+      const members = await interaction.guild.members.fetch();
+      const humanMembers = members.filter((m) => !m.user.bot);
+
+      const entries = humanMembers.map((member) => ({
+        id: member.id,
+        displayName: member.displayName,
+        tag: getMemberTag(member),
+      }));
+
+      const UNTAGGED = "Chưa gắn thẻ";
+      const tagOrder = [...MANAGED_TAGS, UNTAGGED];
+      entries.sort((a, b) => {
+        const tagDiff = tagOrder.indexOf(a.tag) - tagOrder.indexOf(b.tag);
+        return tagDiff !== 0 ? tagDiff : a.displayName.localeCompare(b.displayName);
+      });
+
+      const PAGE_SIZE = 15;
+      const pages = [];
+      for (let i = 0; i < entries.length; i += PAGE_SIZE) {
+        pages.push(entries.slice(i, i + PAGE_SIZE));
+      }
+      if (pages.length === 0) pages.push([]);
+
+      const buildEmbed = (pageIndex) => {
+        const page = pages[pageIndex];
+        const lines = page.length
+          ? page.map((e) => `<@${e.id}> — **${e.tag}**`).join("\n")
+          : "Không có thành viên nào.";
+        return new EmbedBuilder()
+          .setTitle(`Danh sách thành viên (${entries.length} người)`)
+          .setDescription(lines)
+          .setColor(0x5865f2)
+          .setFooter({ text: `Trang ${pageIndex + 1}/${pages.length}` });
+      };
+
+      const buildRow = (pageIndex) =>
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId("member_prev")
+            .setLabel("◀ Trước")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(pageIndex === 0),
+          new ButtonBuilder()
+            .setCustomId("member_next")
+            .setLabel("Sau ▶")
+            .setStyle(ButtonStyle.Secondary)
+            .setDisabled(pageIndex === pages.length - 1)
+        );
+
+      let currentPage = 0;
+      const message = await interaction.editReply({
+        embeds: [buildEmbed(currentPage)],
+        components: pages.length > 1 ? [buildRow(currentPage)] : [],
+      });
+
+      if (pages.length <= 1) return;
+
+      const collector = message.createMessageComponentCollector({
+        componentType: ComponentType.Button,
+        time: 2 * 60 * 1000, // stop listening after 2 minutes
+      });
+
+      collector.on("collect", async (btnInteraction) => {
+        if (btnInteraction.user.id !== interaction.user.id) {
+          await btnInteraction.reply({
+            content: "Chỉ người dùng lệnh mới có thể chuyển trang.",
+            ephemeral: true,
+          });
+          return;
+        }
+
+        if (btnInteraction.customId === "member_prev") currentPage = Math.max(0, currentPage - 1);
+        if (btnInteraction.customId === "member_next")
+          currentPage = Math.min(pages.length - 1, currentPage + 1);
+
+        await btnInteraction.update({
+          embeds: [buildEmbed(currentPage)],
+          components: [buildRow(currentPage)],
+        });
+      });
+
+      collector.on("end", async () => {
+        try {
+          await interaction.editReply({ components: [] }); // disable buttons after timeout
+        } catch {
+          // message may already be gone (e.g. channel deleted) — ignore
+        }
+      });
+    } catch (err) {
+      console.error(err);
+      await interaction.editReply("Something went wrong fetching the member list.");
     }
     return;
   }

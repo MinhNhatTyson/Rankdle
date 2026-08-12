@@ -19,6 +19,10 @@ async function ensureTagRoles(guild) {
   return roleMap;
 }
 
+function getMemberTag(member) {
+  const role = member.roles.cache.find((r) => MANAGED_TAGS.includes(r.name));
+  return role ? role.name : "Chưa gắn thẻ";
+}
 async function recalculateTags(guild) {
   const me = guild.members.me;
   if (!me?.permissions.has(PermissionFlagsBits.ManageRoles)) {
@@ -76,4 +80,4 @@ async function recalculateTags(guild) {
   return { totalMembers: memberInputs.length, changed };
 }
 
-module.exports = { recalculateTags, ensureTagRoles };
+module.exports = { recalculateTags, ensureTagRoles, getMemberTag };

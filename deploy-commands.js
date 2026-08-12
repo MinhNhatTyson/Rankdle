@@ -59,6 +59,11 @@ const commands = [
     .setDescription("Recalculate and reassign activity tags for all members")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
     .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("member")
+    .setDescription("List every member in the server with their current activity tag")
+    .toJSON(),
 ];
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);

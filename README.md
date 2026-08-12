@@ -66,3 +66,7 @@ Run `/recalc-tags` (requires Manage Roles) whenever you want to refresh tags —
 4. Re-run `npm run deploy` to register the new `/recalc-tags` command.
 
 Activity data is stored in `activity.json` next to `links.json` — back it up the same way.
+
+Run `/member` to see every member's current tag, sorted by tag then name. If the
+server has more than 15 members it paginates automatically — use the ◀/▶ buttons
+(only the person who ran the command can navigate; buttons disable after 2 minutes idle).
