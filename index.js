@@ -617,6 +617,20 @@ client.on("interactionCreate", async (interaction) => {
 
   // ---------- /upload-video ----------
   if (interaction.commandName === "upload-video") {
+    const attachment = interaction.options.getAttachment("video");
+    const rank = interaction.options.getString("rank");
+
+    // Debug: log exactly what discord.js received for this attachment.
+    console.log("[upload-video debug]", {
+      name: attachment.name,
+      size: attachment.size,
+      contentType: attachment.contentType,
+      url: attachment.url,
+      width: attachment.width,
+      height: attachment.height,
+      duration: attachment.duration ?? null,
+    });
+
     if (interaction.channelId !== process.env.UPLOAD_CHANNEL_ID) {
       await interaction.reply({
         content: `Please upload clips in <#${process.env.UPLOAD_CHANNEL_ID}>.`,
@@ -638,9 +652,6 @@ client.on("interactionCreate", async (interaction) => {
     await interaction.deferReply({ ephemeral: true });
 
     try {
-      // Re-host the clip under our own message now, while the attachment URL
-      // is still fresh — the daily pool re-fetches this message later to get
-      // a valid URL, since Discord's CDN links expire.
       const storageMsg = await interaction.channel.send({
         content: `📥 Clip from <@${interaction.user.id}> — rank: **${rank}** (queued for Guess the Rank)`,
         files: [{ attachment: attachment.url, name: attachment.name }],
@@ -656,8 +667,20 @@ client.on("interactionCreate", async (interaction) => {
 
       await interaction.editReply(`Clip saved as **${rank}**. It'll go into a future daily Guess the Rank pool.`);
     } catch (err) {
-      console.error(err);
-      await interaction.editReply("Something went wrong saving that clip. Try again shortly.");
+      // Debug: dump everything discord.js knows about this failure —
+      // HTTP status, Discord's error code, and the raw response body.
+      console.error("[upload-video debug] re-upload failed:", {
+        message: err.message,
+        code: err.code,
+        status: err.status,
+        method: err.method,
+        url: err.url,
+        requestBody: err.requestBody,
+        rawError: err.rawError,
+      });
+      await interaction.editReply(
+        `Something went wrong saving that clip (${err.code ?? err.message}). Try again shortly.`
+      );
     }
     return;
   }
