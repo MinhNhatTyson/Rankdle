@@ -1,4 +1,18 @@
 require("dotenv").config();
+const REQUIRED_ENV_VARS = [
+  "DISCORD_TOKEN",
+  "CLIENT_ID",
+  "GUILD_ID",
+  "HENRIK_API_KEY",
+  "UPLOAD_CHANNEL_ID",
+  "GUESS_CHANNEL_ID",
+];
+const missingEnvVars = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
+if (missingEnvVars.length > 0) {
+  console.error(`[startup] Missing required environment variable(s): ${missingEnvVars.join(", ")}`);
+  console.error("[startup] Set these in your .env file (local) or Render's Environment tab (deployed), then restart.");
+  process.exit(1);
+}
 const http = require("http");
 const {
   Client,
