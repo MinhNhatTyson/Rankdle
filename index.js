@@ -23,6 +23,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
   ComponentType,
 } = require("discord.js");
 const fetch = require("node-fetch");
@@ -46,8 +47,9 @@ const {
   compareGuess,
 } = require("./agentle");
 const { getOrCreateGame, saveGame, recordResult } = require("./agentleStorage");
-const { addSubmission, getVideo, getUserGuesses, recordGuess, recordStatGuess, getStats: getRankdleStats } = require("./rankdleStorage");
-const { dateKeyFor: rankdleDateKeyFor, ensureDailyPool, compareTierGuess } = require("./rankdle");
+const { addSubmission, getVideo, dispenseNextVideo, getPoolProgress, getUserGuesses, recordGuess, recordStatGuess, getStats: getRankdleStats } = require("./rankdleStorage");
+const { dateKeyFor: rankdleDateKeyFor, fetchFreshAttachment, compareTierGuess } = require("./rankdle");
+const { tierChoices } = require("./rankTiers");
 
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
@@ -710,69 +712,139 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    const guessChannel = await client.channels.fetch(process.env.GUESS_CHANNEL_ID).catch(() => null);
-    if (!guessChannel) {
+    if (sub === "status") {
+      const progress = getPoolProgress(dateKey);
+      if (progress.videoIds.length === 0) {
+        await interaction.reply({
+          content: "No clips have been dispensed yet today. Be the first — run `/rankdle guess`!",
+          ephemeral: true,
+        });
+        return;
+      }
+      const userGuesses = getUserGuesses(dateKey, interaction.user.id);
+      const dispensedIds = progress.videoIds.slice(0, progress.servedIndex);
+      const lines = dispensedIds.map((id, i) => {
+        const g = userGuesses[id];
+        return g
+          ? `Clip ${i + 1}: you guessed **${g.guessTier}** — ${g.correct ? "✅ correct" : "❌ wrong"}`
+          : `Clip ${i + 1}: dispensed, but not guessed by you`;
+      });
       await interaction.reply({
-        content: "The guess channel isn't set up correctly — ask an admin to check GUESS_CHANNEL_ID.",
+        content: `Today: ${progress.servedIndex}/${progress.videoIds.length} clip(s) dispensed so far.\n${
+          lines.join("\n") || "None yet."
+        }`,
         ephemeral: true,
       });
       return;
     }
 
-    await interaction.deferReply({ ephemeral: true });
-    const pool = await ensureDailyPool(dateKey, guessChannel, client);
-
-    if (pool.videoIds.length === 0) {
-      await interaction.editReply("No clips available today — ask people to upload some with `/upload-video`!");
-      return;
-    }
-
-    if (sub === "status") {
-      const userGuesses = getUserGuesses(dateKey, interaction.user.id);
-      const lines = pool.videoIds.map((id, i) => {
-        const g = userGuesses[id];
-        return g
-          ? `Clip ${i + 1}: guessed **${g.guessTier}** — ${g.correct ? "✅ correct" : "❌ wrong"}`
-          : `Clip ${i + 1}: not guessed yet`;
-      });
-      await interaction.editReply(lines.join("\n"));
-      return;
-    }
-
     if (sub === "guess") {
-      const clipNum = interaction.options.getInteger("clip");
-      const guessRank = interaction.options.getString("rank");
+      const dispensed = dispenseNextVideo(dateKey);
 
-      if (clipNum > pool.videoIds.length) {
-        await interaction.editReply(`Only ${pool.videoIds.length} clip(s) posted today. Pick a number 1-${pool.videoIds.length}.`);
+      if (dispensed.done) {
+        const msg =
+          dispensed.total === 0
+            ? "No clips are available today — ask people to upload some with `/upload-video`!"
+            : `All ${dispensed.total} of today's clips have already been shown. Come back tomorrow!`;
+        await interaction.reply({ content: msg, ephemeral: true });
         return;
       }
 
-      const videoId = pool.videoIds[clipNum - 1];
-      const video = getVideo(videoId);
+      const video = getVideo(dispensed.videoId);
+      const isOwnClip = video.uploaderId === interaction.user.id;
 
-      if (video.uploaderId === interaction.user.id) {
-        await interaction.editReply("That's your own clip — no cheating! Try a different one.");
+      const guessChannel = await client.channels.fetch(process.env.GUESS_CHANNEL_ID).catch(() => null);
+      if (!guessChannel) {
+        await interaction.reply({
+          content: "The guess channel isn't set up correctly — ask an admin to check GUESS_CHANNEL_ID.",
+          ephemeral: true,
+        });
         return;
       }
 
-      const userGuesses = getUserGuesses(dateKey, interaction.user.id);
-      if (userGuesses[videoId]) {
-        await interaction.editReply(`You already guessed **${userGuesses[videoId].guessTier}** for clip ${clipNum}.`);
+      const postingHere = interaction.channelId === guessChannel.id;
+      await interaction.deferReply({ ephemeral: !postingHere });
+
+      let attachment;
+      try {
+        attachment = await fetchFreshAttachment(client, video);
+      } catch (err) {
+        console.error("[rankdle] Failed to refetch stored clip:", err);
+      }
+      if (!attachment) {
+        await interaction.editReply(
+          "Couldn't load that clip's video file — it may have been deleted from the upload channel. Try `/rankdle guess` again."
+        );
         return;
       }
 
-      const { correct, close } = compareTierGuess(guessRank, video.tier);
-      recordGuess(dateKey, interaction.user.id, videoId, guessRank, correct);
-      recordStatGuess(interaction.user.id, correct);
+      const selectRow = new ActionRowBuilder().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId("rankdle_guess_select")
+          .setPlaceholder("What rank do you think this is?")
+          .addOptions(tierChoices().map((c) => ({ label: c.name, value: c.value })))
+      );
 
-      const resultLine = correct
-        ? `✅ Correct! Clip ${clipNum} was **${video.tier}**.`
-        : close
-        ? `🟨 Close! You guessed **${guessRank}**, actual was **${video.tier}** (one tier off).`
-        : `❌ Not quite. You guessed **${guessRank}**, actual was **${video.tier}**.`;
+      const embed = new EmbedBuilder()
+        .setTitle(`🎬 Clip ${dispensed.clipNumber}/${dispensed.total} — Guess the Rank`)
+        .setDescription(
+          isOwnClip
+            ? "That's actually your own clip — you can watch, but guessing is disabled for you."
+            : `Watch the clip, then pick a rank from the dropdown below. <@${interaction.user.id}> has 3 minutes to guess.`
+        )
+        .setColor(0x2b2b3a);
 
-      await interaction.editReply(resultLine);
+      const payload = {
+        embeds: [embed],
+        files: [{ attachment: attachment.url, name: video.filename || "clip.mp4" }],
+        components: isOwnClip ? [] : [selectRow],
+      };
+
+      let sentMessage;
+      if (postingHere) {
+        sentMessage = await interaction.editReply(payload);
+      } else {
+        sentMessage = await guessChannel.send(payload);
+        await interaction.editReply(`Posted in <#${guessChannel.id}> — go make your guess!`);
+      }
+
+      if (isOwnClip) return;
+
+      try {
+        const selectInteraction = await sentMessage.awaitMessageComponent({
+          componentType: ComponentType.StringSelect,
+          filter: (i) => i.user.id === interaction.user.id,
+          time: 3 * 60 * 1000,
+        });
+
+        const guessRank = selectInteraction.values[0];
+        const { correct, close } = compareTierGuess(guessRank, video.tier);
+        recordGuess(dateKey, interaction.user.id, video.id, guessRank, correct);
+        recordStatGuess(interaction.user.id, correct);
+
+        const resultLine = correct
+          ? `✅ Correct! This clip was **${video.tier}**.`
+          : close
+          ? `🟨 Close! You guessed **${guessRank}**, actual was **${video.tier}** (one tier off).`
+          : `❌ Not quite. You guessed **${guessRank}**, actual was **${video.tier}**.`;
+
+        await selectInteraction.update({
+          embeds: [EmbedBuilder.from(embed).setDescription(resultLine)],
+          components: [],
+        });
+      } catch (err) {
+        // No selection within the time limit — just clean up the dropdown.
+        try {
+          const timeoutEmbed = EmbedBuilder.from(embed).setDescription("⌛ Time's up — no guess was made for this clip.");
+          if (postingHere) {
+            await interaction.editReply({ embeds: [timeoutEmbed], components: [] });
+          } else {
+            await sentMessage.edit({ embeds: [timeoutEmbed], components: [] });
+          }
+        } catch {
+          // message may already be gone — ignore
+        }
+      }
       return;
     }
   }

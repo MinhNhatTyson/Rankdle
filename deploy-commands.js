@@ -105,17 +105,7 @@ const commands = [
   new SlashCommandBuilder()
     .setName("rankdle")
     .setDescription("Guess the Rank — guess the rank shown in today's anonymized clips")
-    .addSubcommand((sub) =>
-      sub
-        .setName("guess")
-        .setDescription("Guess the rank for one of today's clips")
-        .addIntegerOption((opt) =>
-          opt.setName("clip").setDescription("Clip number (1-5)").setRequired(true).setMinValue(1).setMaxValue(5)
-        )
-        .addStringOption((opt) =>
-          opt.setName("rank").setDescription("Your guess").setRequired(true).addChoices(...tierChoices())
-        )
-    )
+    .addSubcommand((sub) => sub.setName("guess").setDescription("Get a random clip and guess its rank"))
     .addSubcommand((sub) => sub.setName("status").setDescription("See which of today's clips you've guessed"))
     .addSubcommand((sub) => sub.setName("stats").setDescription("See your lifetime Guess the Rank accuracy"))
     .toJSON(),

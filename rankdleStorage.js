@@ -71,23 +71,58 @@ function markVideosUsed(ids, dateKey) {
   saveVideos(db);
 }
 
-// ---------------- Daily pools ----------------
-// { [dateKey]: { videoIds: [...], postedAt } }
+// ---------------- Daily pool (shared, order-based) ----------------
+// { [dateKey]: { videoIds: [...5 random ids, fixed order], servedIndex } }
+// servedIndex tracks how many /rankdle guess calls have dispensed a clip
+// today — NOT per-user. This is a server-wide budget of 5 clips/day.
+const DAILY_POOL_SIZE = 5;
+
 function loadPools() {
   return loadJSON(POOLS_PATH, {});
 }
 function savePools(db) {
   saveJSON(POOLS_PATH, db);
 }
-function getPool(dateKey) {
-  const db = loadPools();
-  return db[dateKey] || null;
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
-function savePool(dateKey, videoIds) {
+
+function getPoolProgress(dateKey) {
   const db = loadPools();
-  db[dateKey] = { videoIds, postedAt: Date.now() };
+  return db[dateKey] || { videoIds: [], servedIndex: 0 };
+}
+
+// Pops the next not-yet-served clip off today's pool, creating the pool
+// (randomly, from currently pending uploads) the first time it's called
+// each day. Returns { done: true, total } once all of today's clips have
+// been dispensed, or { done: false, videoId, clipNumber, total } otherwise.
+function dispenseNextVideo(dateKey) {
+  const db = loadPools();
+  let pool = db[dateKey];
+
+  if (!pool) {
+    const chosen = shuffle(getPendingVideos()).slice(0, DAILY_POOL_SIZE);
+    pool = { videoIds: chosen.map((v) => v.id), servedIndex: 0 };
+    db[dateKey] = pool;
+    if (chosen.length > 0) markVideosUsed(chosen.map((v) => v.id), dateKey);
+    savePools(db);
+  }
+
+  if (pool.videoIds.length === 0) return { done: true, total: 0 };
+  if (pool.servedIndex >= pool.videoIds.length) return { done: true, total: pool.videoIds.length };
+
+  const clipNumber = pool.servedIndex + 1;
+  const videoId = pool.videoIds[pool.servedIndex];
+  pool.servedIndex++;
+  db[dateKey] = pool;
   savePools(db);
-  return db[dateKey];
+
+  return { done: false, videoId, clipNumber, total: pool.videoIds.length };
 }
 
 // ---------------- Guesses ----------------
@@ -135,8 +170,8 @@ module.exports = {
   getPendingVideos,
   getVideo,
   markVideosUsed,
-  getPool,
-  savePool,
+  dispenseNextVideo,
+  getPoolProgress,
   getUserGuesses,
   recordGuess,
   recordStatGuess,
