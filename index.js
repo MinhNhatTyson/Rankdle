@@ -56,6 +56,25 @@ const client = new Client({
   partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
+// ---- Debug logging: surfaces discord.js-level errors/warnings that would
+// otherwise fail silently (rate limits, REST failures, gateway issues). ----
+client.on("error", (err) => {
+  console.error("[discord.js client error]", err);
+});
+client.on("warn", (msg) => {
+  console.warn("[discord.js warn]", msg);
+});
+client.rest.on("rateLimited", (info) => {
+  console.warn("[discord.js rate limit]", JSON.stringify(info));
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
+
 // Rank tier colors just for nicer embeds (rough approximation)
 const TIER_COLORS = {
   Iron: 0x4e4e4e,
@@ -592,6 +611,135 @@ client.on("interactionCreate", async (interaction) => {
       await interaction.reply({
         embeds: [buildAgentleEmbed(state, nowFinished ? { finished: true, answerAgent: answer } : {})],
       });
+      return;
+    }
+  }
+
+  // ---------- /upload-video ----------
+  if (interaction.commandName === "upload-video") {
+    if (interaction.channelId !== process.env.UPLOAD_CHANNEL_ID) {
+      await interaction.reply({
+        content: `Please upload clips in <#${process.env.UPLOAD_CHANNEL_ID}>.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const attachment = interaction.options.getAttachment("video");
+    const rank = interaction.options.getString("rank");
+
+    const looksLikeVideo =
+      attachment.contentType?.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(attachment.name || "");
+    if (!looksLikeVideo) {
+      await interaction.reply({ content: "That doesn't look like a video file. Please attach a video clip.", ephemeral: true });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    try {
+      // Re-host the clip under our own message now, while the attachment URL
+      // is still fresh — the daily pool re-fetches this message later to get
+      // a valid URL, since Discord's CDN links expire.
+      const storageMsg = await interaction.channel.send({
+        content: `📥 Clip from <@${interaction.user.id}> — rank: **${rank}** (queued for Guess the Rank)`,
+        files: [{ attachment: attachment.url, name: attachment.name }],
+      });
+
+      addSubmission({
+        uploaderId: interaction.user.id,
+        storageChannelId: storageMsg.channelId,
+        storageMessageId: storageMsg.id,
+        filename: attachment.name,
+        tier: rank,
+      });
+
+      await interaction.editReply(`Clip saved as **${rank}**. It'll go into a future daily Guess the Rank pool.`);
+    } catch (err) {
+      console.error(err);
+      await interaction.editReply("Something went wrong saving that clip. Try again shortly.");
+    }
+    return;
+  }
+
+  // ---------- /rankdle ----------
+  if (interaction.commandName === "rankdle") {
+    const sub = interaction.options.getSubcommand();
+    const dateKey = rankdleDateKeyFor();
+
+    if (sub === "stats") {
+      const s = getRankdleStats(interaction.user.id);
+      const acc = s.totalGuesses > 0 ? ((s.correctGuesses / s.totalGuesses) * 100).toFixed(1) : "0.0";
+      await interaction.reply({
+        content: `You've guessed ${s.totalGuesses} clip(s), ${s.correctGuesses} correct (${acc}%).`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const guessChannel = await client.channels.fetch(process.env.GUESS_CHANNEL_ID).catch(() => null);
+    if (!guessChannel) {
+      await interaction.reply({
+        content: "The guess channel isn't set up correctly — ask an admin to check GUESS_CHANNEL_ID.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    const pool = await ensureDailyPool(dateKey, guessChannel, client);
+
+    if (pool.videoIds.length === 0) {
+      await interaction.editReply("No clips available today — ask people to upload some with `/upload-video`!");
+      return;
+    }
+
+    if (sub === "status") {
+      const userGuesses = getUserGuesses(dateKey, interaction.user.id);
+      const lines = pool.videoIds.map((id, i) => {
+        const g = userGuesses[id];
+        return g
+          ? `Clip ${i + 1}: guessed **${g.guessTier}** — ${g.correct ? "✅ correct" : "❌ wrong"}`
+          : `Clip ${i + 1}: not guessed yet`;
+      });
+      await interaction.editReply(lines.join("\n"));
+      return;
+    }
+
+    if (sub === "guess") {
+      const clipNum = interaction.options.getInteger("clip");
+      const guessRank = interaction.options.getString("rank");
+
+      if (clipNum > pool.videoIds.length) {
+        await interaction.editReply(`Only ${pool.videoIds.length} clip(s) posted today. Pick a number 1-${pool.videoIds.length}.`);
+        return;
+      }
+
+      const videoId = pool.videoIds[clipNum - 1];
+      const video = getVideo(videoId);
+
+      if (video.uploaderId === interaction.user.id) {
+        await interaction.editReply("That's your own clip — no cheating! Try a different one.");
+        return;
+      }
+
+      const userGuesses = getUserGuesses(dateKey, interaction.user.id);
+      if (userGuesses[videoId]) {
+        await interaction.editReply(`You already guessed **${userGuesses[videoId].guessTier}** for clip ${clipNum}.`);
+        return;
+      }
+
+      const { correct, close } = compareTierGuess(guessRank, video.tier);
+      recordGuess(dateKey, interaction.user.id, videoId, guessRank, correct);
+      recordStatGuess(interaction.user.id, correct);
+
+      const resultLine = correct
+        ? `✅ Correct! Clip ${clipNum} was **${video.tier}**.`
+        : close
+        ? `🟨 Close! You guessed **${guessRank}**, actual was **${video.tier}** (one tier off).`
+        : `❌ Not quite. You guessed **${guessRank}**, actual was **${video.tier}**.`;
+
+      await interaction.editReply(resultLine);
       return;
     }
   }
