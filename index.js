@@ -652,10 +652,6 @@ client.on("interactionCreate", async (interaction) => {
       });
       return;
     }
-
-    const attachment = interaction.options.getAttachment("video");
-    const rank = interaction.options.getString("rank");
-
     const looksLikeVideo =
       attachment.contentType?.startsWith("video/") || /\.(mp4|mov|webm|mkv)$/i.test(attachment.name || "");
     if (!looksLikeVideo) {
