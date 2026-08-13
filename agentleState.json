@@ -1,0 +1,91 @@
+{
+  "519059939940106250": {
+    "date": "2026-08-13",
+    "answerId": "viper",
+    "guesses": [
+      {
+        "id": "iso",
+        "name": "Iso",
+        "role": {
+          "value": "Duelist",
+          "correct": false
+        },
+        "origin": {
+          "value": "China",
+          "correct": false
+        },
+        "color": {
+          "value": "Purple",
+          "correct": false
+        },
+        "gender": {
+          "value": "Male",
+          "correct": false
+        },
+        "releaseYear": {
+          "value": 2023,
+          "correct": false,
+          "direction": "down",
+          "close": false
+        },
+        "isCorrect": false
+      },
+      {
+        "id": "sage",
+        "name": "Sage",
+        "role": {
+          "value": "Sentinel",
+          "correct": false
+        },
+        "origin": {
+          "value": "China",
+          "correct": false
+        },
+        "color": {
+          "value": "Cyan",
+          "correct": false
+        },
+        "gender": {
+          "value": "Female",
+          "correct": true
+        },
+        "releaseYear": {
+          "value": 2020,
+          "correct": true,
+          "direction": null,
+          "close": false
+        },
+        "isCorrect": false
+      },
+      {
+        "id": "viper",
+        "name": "Viper",
+        "role": {
+          "value": "Controller",
+          "correct": true
+        },
+        "origin": {
+          "value": "United States",
+          "correct": true
+        },
+        "color": {
+          "value": "Green",
+          "correct": true
+        },
+        "gender": {
+          "value": "Female",
+          "correct": true
+        },
+        "releaseYear": {
+          "value": 2020,
+          "correct": true,
+          "direction": null,
+          "close": false
+        },
+        "isCorrect": true
+      }
+    ],
+    "solved": true,
+    "gaveUp": false
+  }
+}

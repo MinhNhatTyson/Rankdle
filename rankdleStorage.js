@@ -105,12 +105,18 @@ function dispenseNextVideo(dateKey) {
   const db = loadPools();
   let pool = db[dateKey];
 
-  if (!pool) {
+  // Don't treat a pool with zero clips as "created" — retry pending videos
+  // on the next call instead of permanently locking in an empty day.
+  if (!pool || pool.videoIds.length === 0) {
     const chosen = shuffle(getPendingVideos()).slice(0, DAILY_POOL_SIZE);
-    pool = { videoIds: chosen.map((v) => v.id), servedIndex: 0 };
-    db[dateKey] = pool;
-    if (chosen.length > 0) markVideosUsed(chosen.map((v) => v.id), dateKey);
-    savePools(db);
+    if (chosen.length > 0) {
+      pool = { videoIds: chosen.map((v) => v.id), servedIndex: 0 };
+      db[dateKey] = pool;
+      markVideosUsed(chosen.map((v) => v.id), dateKey);
+      savePools(db);
+    } else {
+      pool = pool || { videoIds: [], servedIndex: 0 };
+    }
   }
 
   if (pool.videoIds.length === 0) return { done: true, total: 0 };
