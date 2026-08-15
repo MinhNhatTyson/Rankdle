@@ -122,3 +122,8 @@ and `rankdleStats.json` — back these up the same way as `links.json`.
 posting dead links days after upload, the bot immediately re-hosts every uploaded
 clip as its own message in the upload channel and re-fetches that message (for a
 fresh URL) whenever the clip is later used in a daily pool.
+
+Public channel to post the onboarding survey in if a new member
+# has DMs closed (bot can't message them directly). Leave unset to just skip
+# the fallback (they won't get a survey until they run it manually, if you add that).
+WELCOME_CHANNEL_ID=...;

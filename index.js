@@ -50,6 +50,14 @@ const { getOrCreateGame, saveGame, recordResult } = require("./agentleStorage");
 const { addSubmission, getVideo, dispenseNextVideo, getPoolProgress, clearPool, getVideoSummary, getUserGuesses, recordGuess, recordStatGuess, getStats: getRankdleStats } = require("./rankdleStorage");
 const { dateKeyFor: rankdleDateKeyFor, fetchFreshAttachment, compareTierGuess } = require("./rankdle");
 const { tierChoices } = require("./rankTiers");
+const {
+  buildWelcomeEmbed,
+  buildStartRow,
+  buildSurveyEmbed,
+  buildSurveyComponents,
+  buildCompletedEmbed,
+} = require("./onboarding");
+const { saveOnboarding, getOnboarding } = require("./onboardingStorage");
 
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---
@@ -186,6 +194,35 @@ client.once("ready", () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
+client.on("guildMemberAdd", async (member) => {
+  if (member.user.bot) return;
+
+  const embed = buildWelcomeEmbed(member);
+  const row = buildStartRow();
+
+  try {
+    await member.send({ embeds: [embed], components: [row] });
+    console.log(`[onboarding] Sent DM survey to ${member.user.tag}`);
+  } catch (err) {
+    // Discord error code 50007 = "Cannot send messages to this user"
+    // (DMs closed to non-friends / server members). This is expected for
+    // a chunk of users — fall back to a public channel instead of failing silently.
+    console.error(`[onboarding] Could not DM ${member.user.tag} (code ${err.code ?? "?"}): ${err.message}`);
+
+    const fallbackChannelId = process.env.WELCOME_CHANNEL_ID;
+    if (!fallbackChannelId) {
+      console.warn("[onboarding] No WELCOME_CHANNEL_ID set — skipping fallback post.");
+      return;
+    }
+    try {
+      const channel = await member.guild.channels.fetch(fallbackChannelId);
+      await channel.send({ content: `${member}`, embeds: [embed], components: [row] });
+    } catch (fallbackErr) {
+      console.error("[onboarding] Fallback channel post also failed:", fallbackErr.message);
+    }
+  }
+});
+
 client.on("messageCreate", (message) => {
   if (message.author.bot || !message.guild) return;
   recordMessage(message.author.id);
@@ -209,6 +246,7 @@ client.on("messageReactionAdd", async (reaction, user) => {
 });
 
 const voiceJoinTimestamps = new Map(); // userId -> timestamp entered voice
+const onboardingSessions = new Map(); // userId -> { games: string[], freeTime: string|null }
 
 client.on("voiceStateUpdate", (oldState, newState) => {
   const userId = newState.id;
@@ -876,6 +914,86 @@ client.on("interactionCreate", async (interaction) => {
       (v) => `#${v.id} — status: **${v.status}**, dateKey: ${v.dateKey ?? "null"}, tier: ${v.tier}, uploader: <@${v.uploaderId}>`
     );
     await interaction.reply({ content: lines.join("\n"), ephemeral: true });
+    return;
+  }
+
+  // ---------- /onboarding-view ----------
+  if (interaction.commandName === "onboarding-view") {
+    const target = interaction.options.getUser("member");
+    const data = getOnboarding(target.id);
+    if (!data) {
+      await interaction.reply({ content: `${target.username} hasn't completed the survey yet.`, ephemeral: true });
+      return;
+    }
+    await interaction.reply({
+      content:
+        `**${target.username}**\n` +
+        `Games: ${data.games.join(", ")}\n` +
+        `Free time: ${data.freeTime}\n` +
+        `Completed: <t:${Math.floor(data.completedAt / 1000)}:R>`,
+      ephemeral: true,
+    });
+    return;
+  }
+});
+
+client.on("interactionCreate", async (interaction) => {
+  // ---------- onboarding: start button ----------
+  if (interaction.isButton() && interaction.customId === "onboarding_start") {
+    const state = onboardingSessions.get(interaction.user.id) || { games: [], freeTime: null };
+    onboardingSessions.set(interaction.user.id, state);
+
+    await interaction.reply({
+      embeds: [buildSurveyEmbed(state)],
+      components: buildSurveyComponents(state),
+    });
+    return;
+  }
+
+  // ---------- onboarding: games select ----------
+  if (interaction.isStringSelectMenu() && interaction.customId === "onboarding_games") {
+    const state = onboardingSessions.get(interaction.user.id) || { games: [], freeTime: null };
+    state.games = interaction.values;
+    onboardingSessions.set(interaction.user.id, state);
+
+    await interaction.update({
+      embeds: [buildSurveyEmbed(state)],
+      components: buildSurveyComponents(state),
+    });
+    return;
+  }
+
+  // ---------- onboarding: free time select ----------
+  if (interaction.isStringSelectMenu() && interaction.customId === "onboarding_freetime") {
+    const state = onboardingSessions.get(interaction.user.id) || { games: [], freeTime: null };
+    state.freeTime = interaction.values[0];
+    onboardingSessions.set(interaction.user.id, state);
+
+    await interaction.update({
+      embeds: [buildSurveyEmbed(state)],
+      components: buildSurveyComponents(state),
+    });
+    return;
+  }
+
+  // ---------- onboarding: submit ----------
+  if (interaction.isButton() && interaction.customId === "onboarding_submit") {
+    const state = onboardingSessions.get(interaction.user.id);
+    if (!state || state.games.length === 0 || !state.freeTime) {
+      await interaction.reply({
+        content: "Vui lòng chọn đầy đủ 2 mục trước khi gửi.",
+        ephemeral: interaction.inGuild(),
+      });
+      return;
+    }
+
+    saveOnboarding(interaction.user.id, { games: state.games, freeTime: state.freeTime });
+    onboardingSessions.delete(interaction.user.id);
+
+    await interaction.update({
+      embeds: [buildCompletedEmbed(state)],
+      components: [],
+    });
     return;
   }
 });

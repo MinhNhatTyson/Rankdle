@@ -121,6 +121,16 @@ const commands = [
     .setDescription("[Admin] List every uploaded clip's status")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
     .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("onboarding-view")
+    .setDescription("[Admin] View a member's onboarding survey answers")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addUserOption((opt) =>
+      opt.setName("member").setDescription("Whose answers to view").setRequired(true)
+    )
+    .toJSON(),
+  
 ];
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
