@@ -115,6 +115,12 @@ const commands = [
     .setDescription("[Admin] Clear today's Guess the Rank pool so it regenerates from pending uploads")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
     .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("rankdle-inspect")
+    .setDescription("[Admin] List every uploaded clip's status")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .toJSON(),
 ];
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);

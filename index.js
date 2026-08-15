@@ -47,7 +47,7 @@ const {
   compareGuess,
 } = require("./agentle");
 const { getOrCreateGame, saveGame, recordResult } = require("./agentleStorage");
-const { addSubmission, getVideo, dispenseNextVideo, getPoolProgress, clearPool, getUserGuesses, recordGuess, recordStatGuess, getStats: getRankdleStats } = require("./rankdleStorage");
+const { addSubmission, getVideo, dispenseNextVideo, getPoolProgress, clearPool, getVideoSummary, getUserGuesses, recordGuess, recordStatGuess, getStats: getRankdleStats } = require("./rankdleStorage");
 const { dateKeyFor: rankdleDateKeyFor, fetchFreshAttachment, compareTierGuess } = require("./rankdle");
 const { tierChoices } = require("./rankTiers");
 
@@ -862,6 +862,20 @@ client.on("interactionCreate", async (interaction) => {
       console.error("[rankdle-reset] failed:", err);
       await interaction.reply({ content: `Reset failed: ${err.message}`, ephemeral: true });
     }
+    return;
+  }
+
+  // ---------- /rankdle-inspect (temporary debug/admin command) ----------
+  if (interaction.commandName === "rankdle-inspect") {
+    const summary = getVideoSummary();
+    if (summary.length === 0) {
+      await interaction.reply({ content: "No videos in storage at all.", ephemeral: true });
+      return;
+    }
+    const lines = summary.map(
+      (v) => `#${v.id} — status: **${v.status}**, dateKey: ${v.dateKey ?? "null"}, tier: ${v.tier}, uploader: <@${v.uploaderId}>`
+    );
+    await interaction.reply({ content: lines.join("\n"), ephemeral: true });
     return;
   }
 });

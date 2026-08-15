@@ -55,6 +55,17 @@ function getPendingVideos() {
   return Object.values(db.videos).filter((v) => v.status === "pending");
 }
 
+function getVideoSummary() {
+  const db = loadVideos();
+  return Object.values(db.videos).map((v) => ({
+    id: v.id,
+    status: v.status,
+    dateKey: v.dateKey,
+    tier: v.tier,
+    uploaderId: v.uploaderId,
+  }));
+}
+
 function getVideo(id) {
   const db = loadVideos();
   return db.videos[id] || null;
@@ -180,6 +191,7 @@ function getStats(userId) {
 module.exports = {
   addSubmission,
   getPendingVideos,
+  getVideoSummary,
   getVideo,
   markVideosUsed,
   dispenseNextVideo,
