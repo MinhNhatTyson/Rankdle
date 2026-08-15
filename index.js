@@ -47,7 +47,7 @@ const {
   compareGuess,
 } = require("./agentle");
 const { getOrCreateGame, saveGame, recordResult } = require("./agentleStorage");
-const { addSubmission, getVideo, dispenseNextVideo, getPoolProgress, getUserGuesses, recordGuess, recordStatGuess, getStats: getRankdleStats } = require("./rankdleStorage");
+const { addSubmission, getVideo, dispenseNextVideo, getPoolProgress, clearPool, getUserGuesses, recordGuess, recordStatGuess, getStats: getRankdleStats } = require("./rankdleStorage");
 const { dateKeyFor: rankdleDateKeyFor, fetchFreshAttachment, compareTierGuess } = require("./rankdle");
 const { tierChoices } = require("./rankTiers");
 
@@ -852,11 +852,16 @@ client.on("interactionCreate", async (interaction) => {
   // ---------- /rankdle-reset (temporary debug/admin command) ----------
   if (interaction.commandName === "rankdle-reset") {
     const dateKey = rankdleDateKeyFor();
-    clearPool(dateKey);
-    await interaction.reply({
-      content: `Cleared today's (${dateKey}) Guess the Rank pool. Run \`/rankdle guess\` again to regenerate it from pending uploads.`,
-      ephemeral: true,
-    });
+    try {
+      clearPool(dateKey);
+      await interaction.reply({
+        content: `Cleared today's (${dateKey}) Guess the Rank pool. Run \`/rankdle guess\` again to regenerate it from pending uploads.`,
+        ephemeral: true,
+      });
+    } catch (err) {
+      console.error("[rankdle-reset] failed:", err);
+      await interaction.reply({ content: `Reset failed: ${err.message}`, ephemeral: true });
+    }
     return;
   }
 });
