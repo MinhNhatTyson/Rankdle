@@ -97,6 +97,12 @@ function getPoolProgress(dateKey) {
   return db[dateKey] || { videoIds: [], servedIndex: 0 };
 }
 
+function clearPool(dateKey) {
+  const db = loadPools();
+  delete db[dateKey];
+  savePools(db);
+}
+
 // Pops the next not-yet-served clip off today's pool, creating the pool
 // (randomly, from currently pending uploads) the first time it's called
 // each day. Returns { done: true, total } once all of today's clips have
@@ -178,6 +184,7 @@ module.exports = {
   markVideosUsed,
   dispenseNextVideo,
   getPoolProgress,
+  clearPool,
   getUserGuesses,
   recordGuess,
   recordStatGuess,

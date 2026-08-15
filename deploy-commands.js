@@ -109,6 +109,12 @@ const commands = [
     .addSubcommand((sub) => sub.setName("status").setDescription("See which of today's clips you've guessed"))
     .addSubcommand((sub) => sub.setName("stats").setDescription("See your lifetime Guess the Rank accuracy"))
     .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName("rankdle-reset")
+    .setDescription("[Admin] Clear today's Guess the Rank pool so it regenerates from pending uploads")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .toJSON(),
 ];
 
 const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
