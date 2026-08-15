@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const DB_PATH = path.join(__dirname, "links.json");
+const DB_PATH = path.join(__dirname, "../data/links.json");
 
 function loadDB() {
   if (!fs.existsSync(DB_PATH)) {

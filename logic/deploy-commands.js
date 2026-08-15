@@ -3,7 +3,7 @@
 
 require("dotenv").config();
 const { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
-const { tierChoices } = require("./rankTiers");
+const { tierChoices } = require("../config/rankTiers");
 
 const commands = [
   new SlashCommandBuilder()

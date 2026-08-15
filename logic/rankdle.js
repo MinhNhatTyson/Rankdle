@@ -2,7 +2,7 @@
 // their real rank in a private channel. Each day, up to 5 clips are randomly
 // queued; every /rankdle guess call dispenses the next one in that queue.
 
-const { findTier } = require("./rankTiers");
+const { findTier } = require("../config/rankTiers");
 
 function dateKeyFor(date = new Date()) {
   return date.toISOString().slice(0, 10); // YYYY-MM-DD (UTC)

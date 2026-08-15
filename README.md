@@ -38,7 +38,7 @@ A simple Discord bot that lets members link their Riot ID and check anyone's cur
    ```
 
 ## Notes
-- Rank links are stored in `links.json` in this folder — back it up if you move hosts.
+- Rank links are stored in `data/links.json` — back it up if you move hosts.
 - If you want the bot online 24/7, deploy this folder to a host like Railway or Render and set the same environment variables there.
 - The HenrikDev API is an unofficial, community-run wrapper around Riot's data — not affiliated with Riot Games. Its free tier has rate limits, which is plenty for a normal-sized server.
 ## Activity Tags
@@ -65,7 +65,7 @@ Run `/recalc-tags` (requires Manage Roles) whenever you want to refresh tags —
    higher if needed).
 4. Re-run `npm run deploy` to register the new `/recalc-tags` command.
 
-Activity data is stored in `activity.json` next to `links.json` — back it up the same way.
+Activity data is stored in `data/activity.json` alongside `data/links.json` — back them up the same way.
 
 Run `/member` to see every member's current tag, sorted by tag then name. If the
 server has more than 15 members it paginates automatically — use the ◀/▶ buttons
@@ -82,8 +82,8 @@ A Wordle/LoLdle-style daily game — guess the mystery Valorant agent based on t
 - `/agentle giveup` — reveal the answer and forfeit today's streak.
 
 Everyone gets the same agent each day (based on the UTC date), and you get 8 guesses. Progress is
-stored in `agentleState.json`, streaks in `agentleStats.json` — back these up the same way as
-`links.json`. The agent list lives in `valorantAgents.js`; add a row there whenever Riot ships a
+stored in `data/agentleState.json`, streaks in `data/agentleStats.json` — back these up the same way as
+`data/links.json`. The agent list lives in `config/valorantAgents.js`; add a row there whenever Riot ships a
 new agent (colors are a rough approximation, not official Riot data — edit freely).
 
 ## Guess the Rank (Rankdle)
@@ -115,8 +115,8 @@ runs `/rankdle` on a given UTC day, the bot randomly selects up to 5 pending cli
 and posts them. There's no scheduler, so nothing happens until someone actually
 runs the command that day.
 
-Data is stored in `rankdleVideos.json`, `rankdlePools.json`, `rankdleGuesses.json`,
-and `rankdleStats.json` — back these up the same way as `links.json`.
+Data is stored in `data/rankdleVideos.json`, `data/rankdlePools.json`, `data/rankdleGuesses.json`,
+and `data/rankdleStats.json` — back these up the same way as `data/links.json`.
 
 **Caveat:** Discord attachment URLs are signed and expire after a while. To avoid
 posting dead links days after upload, the bot immediately re-hosts every uploaded

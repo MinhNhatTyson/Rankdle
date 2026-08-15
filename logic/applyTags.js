@@ -1,6 +1,6 @@
 const { PermissionFlagsBits } = require("discord.js");
 const { MANAGED_TAGS, TAG_COLORS, computeTags } = require("./tagging");
-const { getAllActivity } = require("./activity");
+const { getAllActivity } = require("../storage/activity");
 
 async function ensureTagRoles(guild) {
   const roleMap = new Map();

@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const DB_PATH = path.join(__dirname, "onboarding.json");
+const DB_PATH = path.join(__dirname, "../data/onboarding.json");
 
 function loadDB() {
   if (!fs.existsSync(DB_PATH)) {

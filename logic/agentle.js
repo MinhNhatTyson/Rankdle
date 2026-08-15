@@ -1,5 +1,5 @@
 // Core logic for /agentle — a Wordle/LoLdle-style "guess the Valorant agent" game.
-const { AGENTS } = require("./valorantAgents");
+const { AGENTS } = require("../config/valorantAgents");
 
 const MAX_GUESSES = 8;
 

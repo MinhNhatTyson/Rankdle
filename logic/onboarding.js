@@ -10,7 +10,7 @@ const {
   ButtonStyle,
   StringSelectMenuBuilder,
 } = require("discord.js");
-const { GAME_OPTIONS, VIBE_OPTIONS, FREETIME_OPTIONS } = require("./onboardingConfig");
+const { GAME_OPTIONS, VIBE_OPTIONS, FREETIME_OPTIONS } = require("../config/onboardingConfig");
 
 function buildWelcomeEmbed(member) {
   return new EmbedBuilder()

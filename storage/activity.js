@@ -4,7 +4,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const DB_PATH = path.join(__dirname, "activity.json");
+const DB_PATH = path.join(__dirname, "../data/activity.json");
 const FLUSH_INTERVAL_MS = 15_000;
 
 function loadFromDisk() {

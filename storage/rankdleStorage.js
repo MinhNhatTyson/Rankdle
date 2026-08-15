@@ -4,10 +4,10 @@
 const fs = require("fs");
 const path = require("path");
 
-const VIDEOS_PATH = path.join(__dirname, "rankdleVideos.json");
-const POOLS_PATH = path.join(__dirname, "rankdlePools.json");
-const GUESSES_PATH = path.join(__dirname, "rankdleGuesses.json");
-const STATS_PATH = path.join(__dirname, "rankdleStats.json");
+const VIDEOS_PATH = path.join(__dirname, "../data/rankdleVideos.json");
+const POOLS_PATH = path.join(__dirname, "../data/rankdlePools.json");
+const GUESSES_PATH = path.join(__dirname, "../data/rankdleGuesses.json");
+const STATS_PATH = path.join(__dirname, "../data/rankdleStats.json");
 
 function loadJSON(filePath, fallback) {
   if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2));

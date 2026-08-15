@@ -27,7 +27,7 @@ const {
   ComponentType,
 } = require("discord.js");
 const fetch = require("node-fetch");
-const { setLink, getLink } = require("./storage");
+const { setLink, getLink } = require("../storage/storage");
 const { fetchRecentMatches, computeAgentStats } = require("./matchstats");
 const {
   recordMessage,
@@ -35,7 +35,7 @@ const {
   recordReactionReceived,
   addVoiceTime,
   flush: flushActivity,
-} = require("./activity");
+} = require("../storage/activity");
 const { recalculateTags, getMemberTag } = require("./applyTags");
 const { MANAGED_TAGS } = require("./tagging");
 const {
@@ -46,10 +46,10 @@ const {
   searchAgentNames,
   compareGuess,
 } = require("./agentle");
-const { getOrCreateGame, saveGame, recordResult } = require("./agentleStorage");
-const { addSubmission, getVideo, dispenseNextVideo, getPoolProgress, clearPool, getVideoSummary, getUserGuesses, recordGuess, recordStatGuess, getStats: getRankdleStats } = require("./rankdleStorage");
+const { getOrCreateGame, saveGame, recordResult } = require("../storage/agentleStorage");
+const { addSubmission, getVideo, dispenseNextVideo, getPoolProgress, clearPool, getVideoSummary, getUserGuesses, recordGuess, recordStatGuess, getStats: getRankdleStats } = require("../storage/rankdleStorage");
 const { dateKeyFor: rankdleDateKeyFor, fetchFreshAttachment, compareTierGuess } = require("./rankdle");
-const { tierChoices } = require("./rankTiers");
+const { tierChoices } = require("../config/rankTiers");
 const {
   buildWelcomeEmbed,
   buildStartRow,
@@ -57,7 +57,7 @@ const {
   buildSurveyComponents,
   buildCompletedEmbed,
 } = require("./onboarding");
-const { saveOnboarding, getOnboarding } = require("./onboardingStorage");
+const { saveOnboarding, getOnboarding } = require("../storage/onboardingStorage");
 
 // --- Tiny HTTP server, only needed for free hosts (like Render) that require ---
 // --- a web service to bind to a port. Not needed if you host as a worker/VPS. ---

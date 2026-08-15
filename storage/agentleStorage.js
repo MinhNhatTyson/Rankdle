@@ -3,8 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 
-const DB_PATH = path.join(__dirname, "agentleState.json");
-const STATS_PATH = path.join(__dirname, "agentleStats.json");
+const DB_PATH = path.join(__dirname, "../data/agentleState.json");
+const STATS_PATH = path.join(__dirname, "../data/agentleStats.json");
 
 function loadJSON(filePath) {
   if (!fs.existsSync(filePath)) fs.writeFileSync(filePath, JSON.stringify({}, null, 2));
