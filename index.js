@@ -848,6 +848,17 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
   }
+
+  // ---------- /rankdle-reset (temporary debug/admin command) ----------
+  if (interaction.commandName === "rankdle-reset") {
+    const dateKey = rankdleDateKeyFor();
+    clearPool(dateKey);
+    await interaction.reply({
+      content: `Cleared today's (${dateKey}) Guess the Rank pool. Run \`/rankdle guess\` again to regenerate it from pending uploads.`,
+      ephemeral: true,
+    });
+    return;
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
